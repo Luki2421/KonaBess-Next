@@ -316,21 +316,32 @@ open class GpuRepository @Inject constructor(
             val levelNodes = getLevelNodes(binNode)
             if (levelNodes.isEmpty()) return@launch
 
-            val templateNode = if (toTop) levelNodes.first() else levelNodes.last()
+            // CRITICAL FIX: Ignore 0Hz padding nodes for duplication template
+            val validLevelNodes = levelNodes.filter { (it.getLongValue("qcom,gpu-freq") ?: 0L) > 0L }
+            val activeNodes = if (validLevelNodes.isNotEmpty()) validLevelNodes else levelNodes
+
+            val templateNode = if (toTop) activeNodes.first() else activeNodes.last()
             val copiedNode = templateNode.deepCopy()
 
             val insertionChildIndex = if (toTop) {
                 val firstLevelChildIndex = binNode.children.indexOf(levelNodes.first())
                 if (firstLevelChildIndex == -1) 0 else firstLevelChildIndex
             } else {
-                val lastLevelChildIndex = binNode.children.indexOf(levelNodes.last())
-                if (lastLevelChildIndex == -1) binNode.children.size else lastLevelChildIndex + 1
+                // Insert exactly after the last valid node, but BEFORE the 0Hz padding
+                val lastValidChildIndex = binNode.children.indexOf(activeNodes.last())
+                if (lastValidChildIndex == -1) binNode.children.size else lastValidChildIndex + 1
             }
 
             binNode.children.add(insertionChildIndex, copiedNode)
             copiedNode.parent = binNode
 
-            val insertedLevelIndex = if (toTop) 0 else levelNodes.size
+            val insertedLevelIndex = if (toTop) {
+                0 
+            } else {
+                // New level index takes the position immediately following the last valid node
+                levelNodes.indexOf(activeNodes.last()) + 1
+            }
+
             renumberLevelNodes(binNode)
             shiftHeaderPointersForInsert(binNode, insertedLevelIndex)
 
