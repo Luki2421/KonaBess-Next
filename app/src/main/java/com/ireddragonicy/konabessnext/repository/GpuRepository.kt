@@ -14,7 +14,6 @@ import com.ireddragonicy.konabessnext.model.ufs.UfsFreqTable
 import com.ireddragonicy.konabessnext.utils.DtsTreeHelper
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.FlowPreview
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.ireddragonicy.konabessnext.utils.DtsEditorDebug
@@ -367,6 +366,57 @@ open class GpuRepository @Inject constructor(
         }
     }
 
+    fun copyBinContents(sourceBinIndex: Int, targetBinIndex: Int, historyDesc: String) {
+        repoScope.launch {
+            val root = getTreeCopy() ?: return@launch
+            val sourceBinNode = gpuDomainManager.findBinNode(root, sourceBinIndex) ?: return@launch
+            val targetBinNode = gpuDomainManager.findBinNode(root, targetBinIndex) ?: return@launch
+
+            // 1. Extract source level nodes
+            val sourceLevelNodes = getLevelNodes(sourceBinNode)
+            if (sourceLevelNodes.isEmpty()) return@launch
+
+            // 2. Clone level nodes
+            val clonedLevels = sourceLevelNodes.map { it.deepCopy() }
+
+            // 3. Remove existing level nodes from target
+            val targetLevelNodes = getLevelNodes(targetBinNode)
+            val insertIndex = if (targetLevelNodes.isNotEmpty()) {
+                targetBinNode.children.indexOf(targetLevelNodes.first())
+            } else {
+                targetBinNode.children.size
+            }
+
+            targetLevelNodes.forEach {
+                targetBinNode.children.remove(it)
+                it.parent = null
+            }
+
+            // 4. Add cloned nodes to target
+            clonedLevels.forEachIndexed { idx, node ->
+                targetBinNode.children.add(insertIndex + idx, node)
+                node.parent = targetBinNode
+            }
+
+            // 5. Renumber
+            renumberLevelNodes(targetBinNode)
+
+            // 6. Fix pointers in target bin (initial-pwrlevel, ca-target-pwrlevel)
+            val maxLevelIndex = (clonedLevels.size - 1).coerceAtLeast(0)
+            targetBinNode.properties.forEach { property ->
+                if (isPowerLevelPointerProperty(property.name)) {
+                    val currentIndex = parseSingleCellIndex(property.originalValue)
+                    if (currentIndex != null && currentIndex > maxLevelIndex) {
+                        // Preserve formatting using setPropertyPreservingFormat
+                        setPropertyPreservingFormat(targetBinNode, property.name, maxLevelIndex.toString())
+                    }
+                }
+            }
+
+            commitTreeChanges(historyDesc, root)
+        }
+    }
+
     private fun ensureParsedTree(): DtsNode? {
         _parsedTree.value?.let { return it }
         val currentLines = _dtsLines.value
@@ -421,7 +471,7 @@ open class GpuRepository @Inject constructor(
 
             val shiftedIndex = (currentIndex - 1).coerceAtLeast(0).coerceAtMost(maxLevelIndex)
             if (shiftedIndex != currentIndex) {
-                binNode.setProperty(property.name, shiftedIndex.toString())
+                setPropertyPreservingFormat(binNode, property.name, shiftedIndex.toString())
             }
         }
     }
@@ -435,7 +485,7 @@ open class GpuRepository @Inject constructor(
 
             val shiftedIndex = (currentIndex + 1).coerceAtMost(maxLevelIndex)
             if (shiftedIndex != currentIndex) {
-                binNode.setProperty(property.name, shiftedIndex.toString())
+                setPropertyPreservingFormat(binNode, property.name, shiftedIndex.toString())
             }
         }
     }
