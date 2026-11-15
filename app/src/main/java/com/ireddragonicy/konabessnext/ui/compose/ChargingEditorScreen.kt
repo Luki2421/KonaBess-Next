@@ -25,8 +25,9 @@ import com.ireddragonicy.konabessnext.model.display.ChargingProperty
 
 private data class ChargingEditTarget(val node: ChargingNode, val prop: ChargingProperty)
 
+/** Decimal view; cells >= 0x80000000 are shown as signed 32-bit (0xffffff9c -> -100). */
 private fun ChargingProperty.display(): String =
-    cells.joinToString(" ") { if (isHex) "0x" + java.lang.Long.toHexString(it) else it.toInt().toString() }
+    cells.joinToString(" ") { it.toInt().toString() }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

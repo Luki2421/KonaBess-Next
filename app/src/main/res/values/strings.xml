@@ -679,7 +679,7 @@
     <string name="no_charging_nodes_found">No charger or battery nodes found in this DTBO.</string>
     <string name="charging_search_hint">Filter (e.g. fv, iterm, ffc, ufcs)</string>
     <string name="charging_warning">Values are raw DTS cells (usually mV / mA / °C×10). Cell count is locked to avoid bootloops. Back up dtbo before flashing.</string>
-    <string name="charging_edit_desc">Enter exactly %1$d values separated by spaces (decimal or 0x hex). Node: %2$s</string>
+    <string name="charging_edit_desc">Enter exactly %1$d values separated by spaces (decimal, negatives allowed; 0x hex also accepted). Node: %2$s</string>
     <string name="no_speaker_amps_found">No compatible speaker amplifiers found in DTBO.</string>
     <string name="dtbo_node_format_with_fragment">Node: %1$s (Fragment %2$d)</string>
     <string name="compatible_format">Compatible: %1$s</string>

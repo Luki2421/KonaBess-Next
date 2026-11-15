@@ -15,7 +15,9 @@ class SpeakerDomainManager @Inject constructor() {
             
             fun recurseSearch(node: DtsNode) {
                 val compatibleStr = node.getProperty("compatible")?.originalValue?.removeSurrounding("\"") ?: ""
-                if (compatibleStr.contains("awinic,aw882xx_smartpa", ignoreCase = true)) {
+                val hasReProps = node.getProperty("aw-re-min") != null || node.getProperty("aw-re-max") != null
+                val isAwinicPa = Regex("(?i)awinic,aw8(8|7)\\w*").containsMatchIn(compatibleStr)
+                if (hasReProps || isAwinicPa) {
                     val min = DtboDomainUtils.extractSingleLong(node.getProperty("aw-re-min")?.originalValue ?: "0")
                     val max = DtboDomainUtils.extractSingleLong(node.getProperty("aw-re-max")?.originalValue ?: "0")
                     panels.add(SpeakerPanel(fragmentIndex, node.name, compatibleStr, min, max))

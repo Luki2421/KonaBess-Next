@@ -20,7 +20,7 @@ class ChargingDomainManager @Inject constructor() {
         "(?i)(chg|charg|batt|battery|vooc|ufcs|pps|ffc|gauge|fuel|bms|adapter|wls|wireless|cp_|charge_pump|mmi_|smart_chg|pd_)"
     )
     private val excludedProps = Regex(
-        "(?i)^(phandle|linux,phandle|reg|interrupts|interrupt-parent|#.*-cells|.*-gpios?|pinctrl-.*|io-channels|.*-supply|status|clocks|power-domains|dmas|iommus)$"
+        "(?i)^(phandle|linux,phandle|reg|interrupts|interrupt-parent|#.*-cells|.*-gpios?|pinctrl-.*|io-channels|.*-supply|status|clocks|power-domains|dmas|iommus|qcom,hw-settle-time|qcom,pre-scaling|qcom,scale-fn-type|qcom,adc-tm-type|qcom,decimation|qcom,ratiometric|power-source|qcom,drive-strength|drive-strength|bias-.*|input-enable|output-.*|polling-delay.*|thermal-sensors)$"
     )
     private val singleCellGroup = Regex("""^<\s*([0-9a-fA-FxX\s]+)\s*>$""")
 
