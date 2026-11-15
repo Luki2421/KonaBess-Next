@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.List
+import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.Speaker
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.*
@@ -21,7 +22,8 @@ import com.ireddragonicy.konabessnext.R
 fun DtboDashboard(
     onNavigateToTimings: () -> Unit,
     onNavigateToTouch: () -> Unit,
-    onNavigateToSpeaker: () -> Unit
+    onNavigateToSpeaker: () -> Unit,
+    onNavigateToCharging: () -> Unit = {}
 ) {
     LazyColumn(
         modifier = Modifier
@@ -136,6 +138,43 @@ fun DtboDashboard(
                     Spacer(modifier = Modifier.width(16.dp))
                     Icon(
                         imageVector = Icons.Rounded.Speaker,
+                        contentDescription = null,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+            }
+        }
+        item {
+            Card(
+                onClick = onNavigateToCharging,
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ),
+                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.battery_charging),
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                        )
+                        Text(
+                            text = stringResource(R.string.battery_charging_desc),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Icon(
+                        imageVector = Icons.Rounded.BatteryChargingFull,
                         contentDescription = null,
                         modifier = Modifier.size(32.dp)
                     )

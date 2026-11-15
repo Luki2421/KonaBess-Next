@@ -99,7 +99,8 @@ fun GuiEditorContent(
                     DtboDashboard(
                         onNavigateToTimings = { dtboNavViewModel.currentStep.value = 1 },
                         onNavigateToTouch = { dtboNavViewModel.currentStep.value = 2 },
-                        onNavigateToSpeaker = { dtboNavViewModel.currentStep.value = 3 }
+                        onNavigateToSpeaker = { dtboNavViewModel.currentStep.value = 3 },
+                        onNavigateToCharging = { dtboNavViewModel.currentStep.value = 4 }
                     )
                 }
                 1 -> {
@@ -133,6 +134,16 @@ fun GuiEditorContent(
                         speakerPanels = speakerPanels,
                         onBack = { dtboNavViewModel.currentStep.value = 0 },
                         onSaveReBounds = speakerViewModel::updateReBounds
+                    )
+                }
+                4 -> {
+                    val chargingViewModel: com.ireddragonicy.konabessnext.viewmodel.dtbo.ChargingViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+                    val chargingNodes by chargingViewModel.chargingNodes.collectAsState()
+                    ChargingEditorScreen(
+                        chargingNodes = chargingNodes,
+                        onBack = { dtboNavViewModel.currentStep.value = 0 },
+                        parseCells = chargingViewModel::parseCells,
+                        onSave = chargingViewModel::updateProperty
                     )
                 }
             }

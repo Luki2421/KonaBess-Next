@@ -1,5 +1,8 @@
-package com.ireddragonicy.konabessnext.ui.compose
+package com.ireddragonicy.konabessnext.ui.compose
 
+
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import com.ireddragonicy.konabessnext.viewmodel.common.Event
 
 import android.graphics.Color as AndroidColor
@@ -318,6 +321,7 @@ fun CurveEditorScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
                             .padding(horizontal = 16.dp, vertical = 0.dp)
                             .padding(bottom = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -329,7 +333,9 @@ fun CurveEditorScreen(
                                 selected = axisLockMode == mode,
                                 onClick = { axisLockMode = mode },
                                 label = { Text(
-                                    when(mode) {
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    text = when(mode) {
                                         AxisLockMode.FREE -> stringResource(R.string.axis_free)
                                         AxisLockMode.VERTICAL -> stringResource(R.string.axis_vertical_freq)
                                         AxisLockMode.HORIZONTAL -> stringResource(R.string.axis_horizontal_volt)

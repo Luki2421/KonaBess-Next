@@ -653,6 +653,12 @@
     <string name="touchscreen_overclock_desc">Edit SPI bus frequency for touch sampling</string>
     <string name="speaker_amplifier">Speaker Amplifier</string>
     <string name="speaker_amplifier_desc">Customize speaker amplifier resistance parameters</string>
+    <string name="battery_charging">Bateria i ładowanie</string>
+    <string name="battery_charging_desc">Edytuj parametry ładowarki, FFC, VOOC/UFCS/PPS i baterii</string>
+    <string name="no_charging_nodes_found">Nie znaleziono węzłów ładowania ani baterii w tym DTBO.</string>
+    <string name="charging_search_hint">Filtr (np. fv, iterm, ffc, ufcs)</string>
+    <string name="charging_warning">Wartości to surowe komórki DTS (zwykle mV / mA / °C×10). Liczba komórek jest zablokowana, żeby uniknąć bootloopa. Zrób backup dtbo przed flashowaniem.</string>
+    <string name="charging_edit_desc">Podaj dokładnie %1$d wartości oddzielone spacją (dziesiętnie lub 0x hex). Węzeł: %2$s</string>
     <string name="no_speaker_amps_found">No compatible speaker amplifiers found in DTBO.</string>
     <string name="dtbo_node_format_with_fragment">Node: %1$s (Fragment %2$d)</string>
     <string name="compatible_format">Compatible: %1$s</string>

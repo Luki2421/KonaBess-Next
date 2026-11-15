@@ -21,6 +21,7 @@ class DtboRepository @Inject constructor(
     private val displayDomainManager: DisplayDomainManager,
     private val touchManager: com.ireddragonicy.konabessnext.domain.TouchDomainManager,
     private val speakerManager: com.ireddragonicy.konabessnext.domain.SpeakerDomainManager,
+    private val chargingManager: com.ireddragonicy.konabessnext.domain.ChargingDomainManager,
     private val userMessageManager: com.ireddragonicy.konabessnext.utils.UserMessageManager
 ) : DtsDataProvider {
     private val historyManager = HistoryManager()
@@ -71,6 +72,41 @@ class DtboRepository @Inject constructor(
 
     val speakerPanels = _parsedTree.map { if (it == null) emptyList() else speakerManager.findSpeakerPanels(it) }
         .flowOn(Dispatchers.Default).stateIn(repoScope, SharingStarted.Lazily, emptyList())
+
+    val chargingNodes = _parsedTree.map { if (it == null) emptyList() else chargingManager.findChargingNodes(it) }
+        .flowOn(Dispatchers.Default).stateIn(repoScope, SharingStarted.Lazily, emptyList())
+
+    /**
+     * Replaces the cells of a charging property. The cell count must stay identical to the
+     * original, otherwise the edit is rejected (resizing DTBO arrays can cause bootloops).
+     */
+    fun updateChargingProperty(
+        fragmentIndex: Int,
+        path: List<String>,
+        propertyName: String,
+        newCells: List<Long>
+    ) {
+        repoScope.launch {
+            val root = getTreeCopy() ?: return@launch
+            val node = chargingManager.findNode(root, fragmentIndex, path) ?: return@launch
+            val prop = node.getProperty(propertyName) ?: return@launch
+            val current = chargingManager.findChargingNodes(root)
+                .firstOrNull { it.fragmentIndex == fragmentIndex && it.path == path }
+                ?.properties?.firstOrNull { it.name == propertyName } ?: return@launch
+            if (current.cells.size != newCells.size) {
+                userMessageManager.emitError(
+                    "Cell count mismatch",
+                    "$propertyName needs exactly ${current.cells.size} values (got ${newCells.size})."
+                )
+                return@launch
+            }
+            if (current.cells == newCells) return@launch
+            val newValue = chargingManager.formatCells(newCells, current.isHex)
+            prop.originalValue = newValue
+            prop.isHexArray = current.isHex
+            patchAndCommit(node, propertyName, newValue, "Charging: $propertyName (${path.lastOrNull()})", root)
+        }
+    }
 
     override val canUndo: StateFlow<Boolean> = historyManager.canUndo
     override val canRedo: StateFlow<Boolean> = historyManager.canRedo
