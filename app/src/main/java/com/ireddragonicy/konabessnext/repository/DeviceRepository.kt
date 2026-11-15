@@ -486,6 +486,14 @@ open class DeviceRepository @Inject constructor(
         return output.joinToString("").trim().toLongOrNull()
     }
 
+    /** All qcom,gpu-freq values (Hz) from every pwrlevel in a DTS. */
+    private fun parseDtsGpuFreqs(content: String): Set<Long> {
+        return Regex("""qcom,gpu-freq\s*=\s*<([^>]+)>""").findAll(content).mapNotNull { m ->
+            val c = m.groupValues[1].trim().split(Regex("\\s+")).first()
+            if (c.startsWith("0x", true)) c.substring(2).toLongOrNull(16) else c.toLongOrNull()
+        }.filter { it > 0 }.toSet()
+    }
+
     /** SoC ids from the root "qcom,msm-id = <id rev [id rev ...]>" property (every even cell). */
     private fun parseMsmSocIds(content: String): Set<Long> {
         val m = Regex("""qcom,msm-id\s*=\s*<([^>]+)>""").find(content) ?: return emptySet()
@@ -880,6 +888,10 @@ open class DeviceRepository @Inject constructor(
             val runningModel = if (isRootMode) getRunningDeviceTreeModel() else ""
             val runningCompatibles = if (isRootMode) getRunningCompatibleStrings() else emptyList()
             val runningSocId = if (isRootMode) getRunningSocId() else null
+            val runtimeFreqs: Set<Long> = if (isRootMode) {
+                (getRunTimeGpuFrequencies() as? DomainResult.Success)?.data?.filter { it > 0 }?.toSet() ?: emptySet()
+            } else emptySet()
+            Log.d(TAG, "Runtime GPU freqs: $runtimeFreqs")
             Log.d(TAG, "Running device: model='$runningModel' soc_id=$runningSocId compatibles=$runningCompatibles")
             activeDtbIdByPartition[partition] = -1
 
@@ -901,22 +913,31 @@ open class DeviceRepository @Inject constructor(
                         dtsCompatibles.add(compMatcher.group(1) ?: "")
                     }
 
-                    val matchScore = scoreDtbMatch(runningModel, runningCompatibles, dtsModel, dtsCompatibles) +
-                        (if (runningSocId != null && runningSocId in parseMsmSocIds(content)) 1_000_000 else 0)
-                    Log.d(TAG, "DTB $i model='$dtsModel' matchScore=$matchScore")
-                    if (matchScore > bestMatchScore) {
-                        bestMatchScore = matchScore
-                        activeDtbIdByPartition[partition] = i
-                    }
-
                     Log.d(TAG, "Running smart detection for DTB $i...")
                     val scanResult = DtsScanner.scanContent(content, i)
 
                     val def = if (scanResult.isValid) {
-                        val smartDef = DtsScanner.toChipDefinition(scanResult)
-                        smartDef
+                        DtsScanner.toChipDefinition(scanResult)
                     } else {
                         createGenericPlaceholder(i, content, dtsModel)
+                    }
+
+                    // Only DTBs with an editable GPU table can become active.
+                    if (def.strategyType.isNotEmpty()) {
+                        val dtsFreqs = parseDtsGpuFreqs(content)
+                        val freqScore = when {
+                            runtimeFreqs.isEmpty() || dtsFreqs.isEmpty() -> 0
+                            dtsFreqs == runtimeFreqs -> 10_000_000
+                            else -> runtimeFreqs.intersect(dtsFreqs).size * 10_000
+                        }
+                        val matchScore = 1 + freqScore +
+                            scoreDtbMatch(runningModel, runningCompatibles, dtsModel, dtsCompatibles) +
+                            (if (runningSocId != null && runningSocId in parseMsmSocIds(content)) 1_000_000 else 0)
+                        Log.d(TAG, "DTB $i model='$dtsModel' freqs=${dtsFreqs.size} matchScore=$matchScore")
+                        if (matchScore > bestMatchScore) {
+                            bestMatchScore = matchScore
+                            activeDtbIdByPartition[partition] = i
+                        }
                     }
                     partitionDtbs.add(Dtb(i, def, partition))
                 } catch (e: Exception) {
