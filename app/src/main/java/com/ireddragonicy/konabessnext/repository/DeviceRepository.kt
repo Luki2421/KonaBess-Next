@@ -452,6 +452,35 @@ open class DeviceRepository @Inject constructor(
         return sanitizeString(output.joinToString(" "))
     }
 
+    /**
+     * Scores how well a DTB matches the running device. Higher is better, 0 = no match.
+     * Running compatibles are ordered most-specific first (e.g. "qcom,canoe-mtp", "qcom,canoe", "qcom,mtp"),
+     * so earlier entries weigh far more than generic trailing ones that every variant shares.
+     */
+    private fun scoreDtbMatch(
+        runningModel: String,
+        runningCompatibles: List<String>,
+        dtsModel: String,
+        dtsCompatibles: List<String>
+    ): Int {
+        var score = 0
+        if (runningModel.isNotEmpty() && dtsModel.isNotEmpty()) {
+            if (dtsModel.equals(runningModel, ignoreCase = true)) {
+                score += 100_000
+            } else if (dtsModel.contains(runningModel, true) || runningModel.contains(dtsModel, true)) {
+                score += 50_000
+            }
+        }
+        val dtsSet = dtsCompatibles.map { it.lowercase() }.toSet()
+        val n = runningCompatibles.size
+        runningCompatibles.forEachIndexed { idx, compat ->
+            if (compat.lowercase() in dtsSet) {
+                score += (n - idx) * 100
+            }
+        }
+        return score
+    }
+
     private suspend fun getRunningCompatibleStrings(): List<String> {
         val output = shellRepository.execForOutput("cat /proc/device-tree/compatible | tr '\\0' '\\n'")
         return output.map { sanitizeString(it) }.filter { it.isNotEmpty() }
@@ -838,6 +867,7 @@ open class DeviceRepository @Inject constructor(
 
             val count = getDtbCount(partition)
             var parseFailures = 0
+            var bestMatchScore = 0
             for (i in 0 until count) {
                 val dtsFile = File(workDir, "$i.dts")
                 if (!dtsFile.exists()) continue
@@ -853,14 +883,11 @@ open class DeviceRepository @Inject constructor(
                         dtsCompatibles.add(compMatcher.group(1) ?: "")
                     }
 
-                    if (activeDtbIdByPartition[partition] == -1) {
-                        if (runningCompatibles.intersect(dtsCompatibles.toSet()).isNotEmpty()) {
-                            activeDtbIdByPartition[partition] = i
-                        } else if (runningModel.isNotEmpty() && dtsModel.isNotEmpty() &&
-                            (dtsModel.contains(runningModel, true) || runningModel.contains(dtsModel, true))
-                        ) {
-                            activeDtbIdByPartition[partition] = i
-                        }
+                    val matchScore = scoreDtbMatch(runningModel, runningCompatibles, dtsModel, dtsCompatibles)
+                    Log.d(TAG, "DTB $i model='$dtsModel' matchScore=$matchScore")
+                    if (matchScore > bestMatchScore) {
+                        bestMatchScore = matchScore
+                        activeDtbIdByPartition[partition] = i
                     }
 
                     Log.d(TAG, "Running smart detection for DTB $i...")
@@ -868,9 +895,6 @@ open class DeviceRepository @Inject constructor(
 
                     val def = if (scanResult.isValid) {
                         val smartDef = DtsScanner.toChipDefinition(scanResult)
-                        if (activeDtbIdByPartition[partition] == i) {
-                            saveCustomDefinition(smartDef)
-                        }
                         smartDef
                     } else {
                         createGenericPlaceholder(i, content, dtsModel)
@@ -884,6 +908,9 @@ open class DeviceRepository @Inject constructor(
             if (activeDtbIdByPartition[partition] == -1 && count == 1) {
                 activeDtbIdByPartition[partition] = 0
             }
+            partitionDtbs.find { it.id == activeDtbIdByPartition[partition] }
+                ?.takeIf { it.type.strategyType.isNotEmpty() }
+                ?.let { saveCustomDefinition(it.type) }
 
             if (partitionDtbs.isEmpty()) {
                 if (partition == TargetPartition.DTBO) {
