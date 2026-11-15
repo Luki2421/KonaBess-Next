@@ -373,6 +373,9 @@ class BootImageProcessor @Inject constructor(
         dtbType: DtbType?,
         partition: TargetPartition = TargetPartition.BOOT
     ) {
+        // Never force-compile (-f) DTBO: a broken overlay = bootloop. Fail loudly instead.
+        val allowForce = !(partition == TargetPartition.DTBO || dtbType == DtbType.DTBO)
+
         // Compile DTS to DTB
         for (i in 0 until dtbCount) {
             val sourceDts = File(filesDir, "$i.dts")
@@ -386,7 +389,7 @@ class BootImageProcessor @Inject constructor(
 
             // Some real-world DTS trees emit warnings treated as errors.
             // Retry with -f to force output when possible.
-            if (!compileResult.isSuccess) {
+            if (!compileResult.isSuccess && allowForce) {
                 compileResult = shellRepository.execAdaptive(
                     "cd \"$filesDir\" && \"$dtcPath\" -f -I dts -O dtb \"$i.dts\" -o \"$i.dtb\""
                 )
@@ -398,7 +401,7 @@ class BootImageProcessor @Inject constructor(
                 compileResult = shellRepository.execAdaptive(
                     "cd \"$filesDir\" && \"$dtcPath\" -I dts -O dtb \"$i.dts\" -o \"$i.dtb\""
                 )
-                if (!compileResult.isSuccess) {
+                if (!compileResult.isSuccess && allowForce) {
                     compileResult = shellRepository.execAdaptive(
                         "cd \"$filesDir\" && \"$dtcPath\" -f -I dts -O dtb \"$i.dts\" -o \"$i.dtb\""
                     )
@@ -494,8 +497,18 @@ class BootImageProcessor @Inject constructor(
         }
         val outputFile = File(filesDir, TargetPartition.DTBO.outputFileName)
 
+        // Preserve the original dt_table_header.version (offset 28) instead of forcing 0.
+        val originalVersion = runCatching {
+            val orig = File(filesDir, TargetPartition.DTBO.imageFileName)
+            if (orig.exists()) {
+                val head = ByteArray(DTBO_HEADER_SIZE)
+                orig.inputStream().use { it.read(head) }
+                if (readU32Be(head, 0) == DTBO_TABLE_MAGIC) readU32Be(head, 28) else null
+            } else null
+        }.getOrNull() ?: 0
+
         val bytes = if (metadata?.usesTable == true) {
-            buildDtboTableImage(dtbChunks, metadata)
+            buildDtboTableImage(dtbChunks, metadata, originalVersion)
         } else {
             dtbChunks.fold(ByteArray(0)) { acc, item -> acc + item }
         }
@@ -503,7 +516,7 @@ class BootImageProcessor @Inject constructor(
         outputFile.writeBytes(bytes)
     }
 
-    private fun buildDtboTableImage(dtbChunks: List<ByteArray>, metadata: DtboMetadata): ByteArray {
+    private fun buildDtboTableImage(dtbChunks: List<ByteArray>, metadata: DtboMetadata, version: Int = 0): ByteArray {
         val entryCount = dtbChunks.size
         val pageSize = metadata.pageSize.coerceAtLeast(4)
         val entriesOffset = DTBO_HEADER_SIZE
@@ -526,7 +539,7 @@ class BootImageProcessor @Inject constructor(
         writeU32Be(out, 16, entryCount)
         writeU32Be(out, 20, entriesOffset)
         writeU32Be(out, 24, pageSize)
-        writeU32Be(out, 28, 0)
+        writeU32Be(out, 28, version)
 
         for (i in 0 until entryCount) {
             val entry = metadata.entries.getOrNull(i) ?: DtboEntryMeta(0, 0, intArrayOf(0, 0, 0, 0))
