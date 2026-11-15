@@ -922,15 +922,16 @@ open class DeviceRepository @Inject constructor(
                         createGenericPlaceholder(i, content, dtsModel)
                     }
 
-                    // Only DTBs with an editable GPU table can become active.
-                    if (def.strategyType.isNotEmpty()) {
-                        val dtsFreqs = parseDtsGpuFreqs(content)
+                    // DTBs with an editable GPU table are strongly preferred (vendor_boot),
+                    // but overlays without one (dtbo) can still be marked active by model/compatible.
+                    run {
+                        val dtsFreqs = if (def.strategyType.isNotEmpty()) parseDtsGpuFreqs(content) else emptySet()
                         val freqScore = when {
                             runtimeFreqs.isEmpty() || dtsFreqs.isEmpty() -> 0
                             dtsFreqs == runtimeFreqs -> 10_000_000
                             else -> runtimeFreqs.intersect(dtsFreqs).size * 10_000
                         }
-                        val matchScore = 1 + freqScore +
+                        val matchScore = (if (def.strategyType.isNotEmpty()) 100_000_000 else 0) + freqScore +
                             scoreDtbMatch(runningModel, runningCompatibles, dtsModel, dtsCompatibles) +
                             (if (runningSocId != null && runningSocId in parseMsmSocIds(content)) 1_000_000 else 0)
                         Log.d(TAG, "DTB $i model='$dtsModel' freqs=${dtsFreqs.size} matchScore=$matchScore")
