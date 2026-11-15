@@ -146,7 +146,8 @@ class DeviceViewModel @Inject constructor(
         _detectionState.value = UiState.Success(dtbs)
         _isFilesExtracted.value = true
 
-        val firstSupported = dtbs.firstOrNull { it.type.strategyType.isNotEmpty() }
+        val firstSupported = dtbs.firstOrNull { it.id == repository.activeDtbId && it.type.strategyType.isNotEmpty() }
+            ?: dtbs.firstOrNull { it.type.strategyType.isNotEmpty() }
         if (firstSupported != null) {
             selectChipset(firstSupported)
         } else {

@@ -46,7 +46,7 @@ open class DeviceRepository @Inject constructor(
         private const val TAG = "KonaBessDet"
         private val REQUIRED_BINARIES = arrayOf("dtc", "magiskboot")
         
-        private val MODEL_PROPERTY = Pattern.compile("model\\s*=\\s*\"([^\"]+)\"")
+        private val MODEL_PROPERTY = Pattern.compile("(?m)^\\s*model\\s*=\\s*\"([^\"]+)\"")
         private val COMPATIBLE_PROPERTY = Pattern.compile("compatible\\s*=\\s*([^;]+);")
         
         private const val KEY_LAST_DTB_ID = "last_dtb_id"
@@ -481,6 +481,22 @@ open class DeviceRepository @Inject constructor(
         return score
     }
 
+    private suspend fun getRunningSocId(): Long? {
+        val output = runCatching { shellRepository.execForOutput("cat /sys/devices/soc0/soc_id") }.getOrNull() ?: return null
+        return output.joinToString("").trim().toLongOrNull()
+    }
+
+    /** SoC ids from the root "qcom,msm-id = <id rev [id rev ...]>" property (every even cell). */
+    private fun parseMsmSocIds(content: String): Set<Long> {
+        val m = Regex("""qcom,msm-id\s*=\s*<([^>]+)>""").find(content) ?: return emptySet()
+        val cells = m.groupValues[1].trim().split(Regex("\\s+")).mapNotNull { c ->
+            if (c.startsWith("0x", true)) c.substring(2).toLongOrNull(16) else c.toLongOrNull()
+        }
+        val ids = mutableSetOf<Long>()
+        cells.forEachIndexed { idx, v -> if (idx % 2 == 0) { ids.add(v); ids.add(v and 0xFFFF) } }
+        return ids
+    }
+
     private suspend fun getRunningCompatibleStrings(): List<String> {
         val output = shellRepository.execForOutput("cat /proc/device-tree/compatible | tr '\\0' '\\n'")
         return output.map { sanitizeString(it) }.filter { it.isNotEmpty() }
@@ -863,6 +879,8 @@ open class DeviceRepository @Inject constructor(
 
             val runningModel = if (isRootMode) getRunningDeviceTreeModel() else ""
             val runningCompatibles = if (isRootMode) getRunningCompatibleStrings() else emptyList()
+            val runningSocId = if (isRootMode) getRunningSocId() else null
+            Log.d(TAG, "Running device: model='$runningModel' soc_id=$runningSocId compatibles=$runningCompatibles")
             activeDtbIdByPartition[partition] = -1
 
             val count = getDtbCount(partition)
@@ -883,7 +901,8 @@ open class DeviceRepository @Inject constructor(
                         dtsCompatibles.add(compMatcher.group(1) ?: "")
                     }
 
-                    val matchScore = scoreDtbMatch(runningModel, runningCompatibles, dtsModel, dtsCompatibles)
+                    val matchScore = scoreDtbMatch(runningModel, runningCompatibles, dtsModel, dtsCompatibles) +
+                        (if (runningSocId != null && runningSocId in parseMsmSocIds(content)) 1_000_000 else 0)
                     Log.d(TAG, "DTB $i model='$dtsModel' matchScore=$matchScore")
                     if (matchScore > bestMatchScore) {
                         bestMatchScore = matchScore
