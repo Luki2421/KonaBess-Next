@@ -40,14 +40,25 @@ fun ChargingEditorScreen(
     var query by remember { mutableStateOf("") }
     var editTarget by remember { mutableStateOf<ChargingEditTarget?>(null) }
 
-    val filtered = remember(chargingNodes, query) {
+    val numberQuery = remember(query) { parseNumberQuery(query) }
+    val filtered = remember(chargingNodes, query, numberQuery) {
         val q = query.trim()
-        if (q.isEmpty()) chargingNodes
-        else chargingNodes.mapNotNull { node ->
-            if (node.displayPath.contains(q, true) || node.compatible.contains(q, true)) node
-            else node.copy(properties = node.properties.filter { it.name.contains(q, true) })
-                .takeIf { it.properties.isNotEmpty() }
+        when {
+            q.isEmpty() -> chargingNodes
+            numberQuery != null -> chargingNodes.mapNotNull { node ->
+                node.copy(properties = node.properties.filter { p -> p.cells.any { numberQuery.matches(it) } })
+                    .takeIf { it.properties.isNotEmpty() }
+            }
+            else -> chargingNodes.mapNotNull { node ->
+                if (node.displayPath.contains(q, true) || node.compatible.contains(q, true)) node
+                else node.copy(properties = node.properties.filter { it.name.contains(q, true) })
+                    .takeIf { it.properties.isNotEmpty() }
+            }
         }
+    }
+    val matchCount = remember(filtered, numberQuery) {
+        if (numberQuery == null) 0
+        else filtered.sumOf { n -> n.properties.sumOf { p -> p.cells.count { numberQuery.matches(it) } } }
     }
 
     Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -74,6 +85,13 @@ fun ChargingEditorScreen(
                     placeholder = { Text(stringResource(R.string.charging_search_hint)) },
                     modifier = Modifier.fillMaxWidth()
                 )
+                if (numberQuery != null) {
+                    Text(
+                        text = stringResource(R.string.charging_number_results, matchCount, filtered.sumOf { it.properties.size }),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
 
@@ -136,13 +154,21 @@ fun ChargingEditorScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                                Text(
-                                    prop.display(),
-                                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    maxLines = 3,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                                if (numberQuery != null) {
+                                    Text(
+                                        highlightCells(prop, numberQuery, MaterialTheme.colorScheme.tertiary),
+                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                } else {
+                                    Text(
+                                        prop.display(),
+                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 3,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
                     }
@@ -190,5 +216,59 @@ fun ChargingEditorScreen(
                 TextButton(onClick = { editTarget = null }) { Text(stringResource(R.string.cancel)) }
             }
         )
+    }
+}
+
+/** Numeric search: single value ("2750", "-100", "0xabe") or range ("2700-2800", "2700..2800"). */
+private data class NumberQuery(val min: Long, val max: Long) {
+    /** Matches a raw 32-bit cell both as signed and unsigned value. */
+    fun matches(cell: Long): Boolean {
+        val signed = cell.toInt().toLong()
+        val unsigned = cell and 0xFFFFFFFFL
+        return signed in min..max || unsigned in min..max
+    }
+}
+
+private fun parseNum(t: String): Long? {
+    val s = t.trim()
+    return when {
+        s.startsWith("-0x", true) -> s.substring(3).toLongOrNull(16)?.let { -it }
+        s.startsWith("0x", true) -> s.substring(2).toLongOrNull(16)
+        else -> s.toLongOrNull()
+    }
+}
+
+private fun parseNumberQuery(input: String): NumberQuery? {
+    val q = input.trim()
+    if (q.isEmpty()) return null
+    parseNum(q)?.let { return NumberQuery(it, it) }
+    val range = Regex("""^(-?(?:0x[0-9a-fA-F]+|\d+))\s*(?:\.\.|-|–|:)\s*(-?(?:0x[0-9a-fA-F]+|\d+))$""").find(q)
+        ?: return null
+    val a = parseNum(range.groupValues[1]) ?: return null
+    val b = parseNum(range.groupValues[2]) ?: return null
+    return NumberQuery(minOf(a, b), maxOf(a, b))
+}
+
+private fun highlightCells(
+    prop: ChargingProperty,
+    query: NumberQuery,
+    highlight: androidx.compose.ui.graphics.Color
+): androidx.compose.ui.text.AnnotatedString = androidx.compose.ui.text.buildAnnotatedString {
+    prop.cells.forEachIndexed { i, cell ->
+        if (i > 0) append(" ")
+        val text = cell.toInt().toString()
+        if (query.matches(cell)) {
+            pushStyle(
+                androidx.compose.ui.text.SpanStyle(
+                    color = highlight,
+                    fontWeight = FontWeight.Bold,
+                    background = highlight.copy(alpha = 0.18f)
+                )
+            )
+            append(text)
+            pop()
+        } else {
+            append(text)
+        }
     }
 }

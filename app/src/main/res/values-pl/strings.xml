@@ -656,7 +656,8 @@
     <string name="battery_charging">Bateria i ładowanie</string>
     <string name="battery_charging_desc">Edytuj parametry ładowarki, FFC, VOOC/UFCS/PPS i baterii</string>
     <string name="no_charging_nodes_found">Nie znaleziono węzłów ładowania ani baterii w tym DTBO.</string>
-    <string name="charging_search_hint">Filtr (np. fv, iterm, ffc, ufcs)</string>
+    <string name="charging_search_hint">Filtr po nazwie lub liczbie (np. fv, 2750, 2700-2800)</string>
+    <string name="charging_number_results">Znaleziono %1$d pasujących wartości w %2$d właściwościach</string>
     <string name="charging_warning">Wartości to surowe komórki DTS (zwykle mV / mA / °C×10). Liczba komórek jest zablokowana, żeby uniknąć bootloopa. Zrób backup dtbo przed flashowaniem.</string>
     <string name="charging_edit_desc">Podaj dokładnie %1$d wartości oddzielone spacją (dziesiętnie, można ujemne; 0x hex też działa). Węzeł: %2$s</string>
     <string name="no_speaker_amps_found">No compatible speaker amplifiers found in DTBO.</string>
