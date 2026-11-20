@@ -7,6 +7,7 @@ import com.ireddragonicy.konabessnext.model.display.DisplayTiming
 import com.ireddragonicy.konabessnext.repository.DtboRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -31,6 +32,20 @@ class DisplayViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val selectedPanelIndex: StateFlow<Int> = repository.selectedPanelIndex
+
+    val activePanelNode: StateFlow<String?> = repository.activePanelNode
+
+    init {
+        // Pre-select the panel the bootloader actually uses, once it is known.
+        viewModelScope.launch {
+            val active = repository.detectActivePanel() ?: return@launch
+            val idx = panelsWithTimings.first { it.isNotEmpty() }.indexOfFirst { it.nodeName == active }
+            if (idx >= 0 && repository.selectedPanelIndex.value == 0) {
+                repository.selectPanel(idx)
+                repository.selectTiming(0)
+            }
+        }
+    }
 
     val selectedTimingIndex: StateFlow<Int> = repository.selectedTimingIndex
 

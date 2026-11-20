@@ -391,7 +391,9 @@ class DisplayDomainManager @Inject constructor() {
     ): DtsNode? {
         val panelNode = findPanelNodeInTree(root, panelNodeName, fragmentIndex) ?: return null
         val timingsContainer = panelNode.getChild("qcom,mdss-dsi-display-timings") ?: return null
-        return timingsContainer.getChild("timing@$timingIndex")
+        // Timing nodes are not always named timing@0..N (e.g. timing@sdc_fhd_120 on Oplus),
+        // so resolve by position, which matches the order used to build DisplayPanel.timings.
+        return timingsContainer.children.getOrNull(timingIndex)
     }
 
     /**

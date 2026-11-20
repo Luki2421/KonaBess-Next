@@ -22,12 +22,27 @@ class DtboRepository @Inject constructor(
     private val touchManager: com.ireddragonicy.konabessnext.domain.TouchDomainManager,
     private val speakerManager: com.ireddragonicy.konabessnext.domain.SpeakerDomainManager,
     private val chargingManager: com.ireddragonicy.konabessnext.domain.ChargingDomainManager,
-    private val userMessageManager: com.ireddragonicy.konabessnext.utils.UserMessageManager
+    private val userMessageManager: com.ireddragonicy.konabessnext.utils.UserMessageManager,
+    private val shellRepository: ShellRepository
 ) : DtsDataProvider {
     private val historyManager = HistoryManager()
 
     private val _selectedPanelIndex = MutableStateFlow(0)
     val selectedPanelIndex: StateFlow<Int> = _selectedPanelIndex.asStateFlow()
+
+    /** Panel node name the bootloader selected (msm_drm.dsi_display0 on the kernel cmdline). */
+    private val _activePanelNode = MutableStateFlow<String?>(null)
+    val activePanelNode: StateFlow<String?> = _activePanelNode.asStateFlow()
+
+    suspend fun detectActivePanel(): String? {
+        _activePanelNode.value?.let { return it }
+        val out = runCatching {
+            shellRepository.execForOutput("cat /proc/cmdline 2>/dev/null; cat /proc/bootconfig 2>/dev/null")
+        }.getOrNull() ?: return null
+        val node = Regex("""dsi_display0\s*=\s*"?([^:\s"]+)""").find(out.joinToString(" "))?.groupValues?.get(1)
+        _activePanelNode.value = node
+        return node
+    }
 
     fun selectPanel(index: Int) {
         _selectedPanelIndex.value = index

@@ -62,6 +62,7 @@ fun DtboTimingEditor(
     val snapshot by displayViewModel.displaySnapshot.collectAsState()
     val panelsWithTimings by displayViewModel.panelsWithTimings.collectAsState()
     val selectedIndex by displayViewModel.selectedPanelIndex.collectAsState()
+    val activePanelNode by displayViewModel.activePanelNode.collectAsState()
     val selectedTimingIndex by displayViewModel.selectedTimingIndex.collectAsState()
     var customFps by remember(snapshot?.timing?.panelFramerate) {
         mutableStateOf(snapshot?.timing?.panelFramerate?.toString().orEmpty())
@@ -147,6 +148,7 @@ fun DtboTimingEditor(
             item {
                 PanelSelectorCard(
                     panels = panelsWithTimings,
+                    activePanelNode = activePanelNode,
                     selectedIndex = selectedIndex,
                     onSelectPanel = { displayViewModel.selectPanel(it) }
                 )
@@ -421,10 +423,13 @@ private fun DfpsListCard(
 @Composable
 private fun PanelSelectorCard(
     panels: List<com.ireddragonicy.konabessnext.model.display.DisplayPanel>,
+    activePanelNode: String?,
     selectedIndex: Int,
     onSelectPanel: (Int) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    fun label(p: com.ireddragonicy.konabessnext.model.display.DisplayPanel): String =
+        p.panelName.ifBlank { p.nodeName } + if (p.nodeName == activePanelNode) "  ● ACTIVE" else ""
     val safeIndex = selectedIndex.coerceIn(0, (panels.size - 1).coerceAtLeast(0))
     val selected = panels.getOrNull(safeIndex)
 
@@ -452,7 +457,7 @@ private fun PanelSelectorCard(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = selected?.panelName?.ifBlank { selected.nodeName } ?: "—",
+                            text = selected?.let { label(it) } ?: "—",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium,
                             maxLines = 1
@@ -475,7 +480,7 @@ private fun PanelSelectorCard(
                             text = {
                                 Column {
                                     Text(
-                                        text = panel.panelName.ifBlank { panel.nodeName },
+                                        text = label(panel),
                                         style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = if (index == safeIndex) FontWeight.Bold else FontWeight.Normal
                                     )
