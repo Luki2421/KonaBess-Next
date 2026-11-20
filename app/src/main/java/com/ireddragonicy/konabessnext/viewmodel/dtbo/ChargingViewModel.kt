@@ -15,7 +15,7 @@ class ChargingViewModel @Inject constructor(
 
     fun parseCells(input: String): List<Long>? = chargingManager.parseUserCells(input)
 
-    fun updateProperty(fragmentIndex: Int, path: List<String>, propertyName: String, cells: List<Long>) {
-        repository.updateChargingProperty(fragmentIndex, path, propertyName, cells)
+    fun updateProperty(fragmentName: String, path: List<String>, propertyName: String, cells: List<Long>) {
+        repository.updateChargingProperty(fragmentName, path, propertyName, cells)
     }
 }

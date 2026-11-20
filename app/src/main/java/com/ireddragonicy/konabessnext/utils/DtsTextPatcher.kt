@@ -39,6 +39,30 @@ object DtsTextPatcher {
         return lines.toMutableList().apply { add(insertAt, formatted) }
     }
 
+    /**
+     * Strict variant: the node path must match exactly (no fragment@N wildcard) and
+     * exactly one block may contain the property. Returns null instead of guessing,
+     * so an edit can never land in a different fragment than the one shown to the user.
+     */
+    fun patchPropertyStrict(
+        lines: List<String>,
+        targetNode: DtsNode,
+        propertyName: String,
+        newValue: String
+    ): List<String>? {
+        val path = buildPath(targetNode)
+        if (path.isEmpty()) return null
+        val candidates = findMatchingBlocks(lines, path, wildcardFragments = false)
+            .filter { findPropertyLine(lines, it.first, it.second, propertyName) != -1 }
+        if (candidates.size != 1) return null
+        val (start, end) = candidates[0]
+        val propLine = findPropertyLine(lines, start, end, propertyName)
+        val indent = lines[propLine].takeWhile { it.isWhitespace() }
+        val formatted = "$indent$propertyName = $newValue;"
+        if (lines[propLine] == formatted) return lines
+        return lines.toMutableList().apply { this[propLine] = formatted }
+    }
+
     // ── Block Resolution ───────────────────────────────────────────────
 
     /**
@@ -63,7 +87,11 @@ object DtsTextPatcher {
      * `fragment@N` names are wildcarded to handle DTBO files where the AST
      * fragment index may differ from the text (e.g., stub vs. full definition).
      */
-    private fun findMatchingBlocks(lines: List<String>, path: List<String>): List<Pair<Int, Int>> {
+    private fun findMatchingBlocks(
+        lines: List<String>,
+        path: List<String>,
+        wildcardFragments: Boolean = true
+    ): List<Pair<Int, Int>> {
         val results = mutableListOf<Pair<Int, Int>>()
         var pathIdx = 0
         var depth = 0
@@ -93,7 +121,7 @@ object DtsTextPatcher {
             if (opens > 0 && pathIdx < path.size) {
                 val token = line.trim().substringBefore("{").trim()
                     .split("\\s+".toRegex()).lastOrNull().orEmpty()
-                if (matchesPathElement(token, path[pathIdx])) {
+                if (matchesPathElement(token, path[pathIdx], wildcardFragments)) {
                     matchedDepths.add(depth + 1)
                     pathIdx++
                     if (pathIdx == path.size) targetStart = i
@@ -105,9 +133,9 @@ object DtsTextPatcher {
     }
 
     /** `fragment@N` tokens wildcard-match any fragment number. */
-    private fun matchesPathElement(token: String, expected: String): Boolean =
+    private fun matchesPathElement(token: String, expected: String, wildcardFragments: Boolean = true): Boolean =
         token == expected ||
-            (expected.startsWith("fragment@") && token.startsWith("fragment@"))
+            (wildcardFragments && expected.startsWith("fragment@") && token.startsWith("fragment@"))
 
     // ── Property Search ────────────────────────────────────────────────
 

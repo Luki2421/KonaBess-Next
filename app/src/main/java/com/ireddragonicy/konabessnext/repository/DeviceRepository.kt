@@ -481,6 +481,18 @@ open class DeviceRepository @Inject constructor(
         return score
     }
 
+    /**
+     * First index from androidboot.dtbo_idx (bootconfig on Android 12+, cmdline before that).
+     * This is the overlay the bootloader really applied, so it beats any heuristic.
+     */
+    private suspend fun getBootDtboIndex(): Int? {
+        val output = runCatching {
+            shellRepository.execForOutput("cat /proc/bootconfig 2>/dev/null; cat /proc/cmdline 2>/dev/null")
+        }.getOrNull() ?: return null
+        val m = Regex("""androidboot\.dtbo_idx\s*=\s*"?([0-9]+)""").find(output.joinToString("\n")) ?: return null
+        return m.groupValues[1].toIntOrNull()
+    }
+
     private suspend fun getRunningSocId(): Long? {
         val output = runCatching { shellRepository.execForOutput("cat /sys/devices/soc0/soc_id") }.getOrNull() ?: return null
         return output.joinToString("").trim().toLongOrNull()
@@ -892,12 +904,15 @@ open class DeviceRepository @Inject constructor(
                 (getRunTimeGpuFrequencies() as? DomainResult.Success)?.data?.filter { it > 0 }?.toSet() ?: emptySet()
             } else emptySet()
             Log.d(TAG, "Runtime GPU freqs: $runtimeFreqs")
+            // Index of the overlay the bootloader actually applied (exact for DTBO).
+            val bootDtboIdx: Int? = if (isRootMode && partition == TargetPartition.DTBO) getBootDtboIndex() else null
+            Log.d(TAG, "androidboot.dtbo_idx=$bootDtboIdx")
             Log.d(TAG, "Running device: model='$runningModel' soc_id=$runningSocId compatibles=$runningCompatibles")
             activeDtbIdByPartition[partition] = -1
 
             val count = getDtbCount(partition)
             var parseFailures = 0
-            var bestMatchScore = 0
+            var bestMatchScore = 0L
             for (i in 0 until count) {
                 val dtsFile = File(workDir, "$i.dts")
                 if (!dtsFile.exists()) continue
@@ -926,14 +941,15 @@ open class DeviceRepository @Inject constructor(
                     // but overlays without one (dtbo) can still be marked active by model/compatible.
                     run {
                         val dtsFreqs = if (def.strategyType.isNotEmpty()) parseDtsGpuFreqs(content) else emptySet()
-                        val freqScore = when {
-                            runtimeFreqs.isEmpty() || dtsFreqs.isEmpty() -> 0
-                            dtsFreqs == runtimeFreqs -> 10_000_000
-                            else -> runtimeFreqs.intersect(dtsFreqs).size * 10_000
+                        val freqScore: Long = when {
+                            runtimeFreqs.isEmpty() || dtsFreqs.isEmpty() -> 0L
+                            dtsFreqs == runtimeFreqs -> 10_000_000L
+                            else -> runtimeFreqs.intersect(dtsFreqs).size * 10_000L
                         }
-                        val matchScore = (if (def.strategyType.isNotEmpty()) 100_000_000 else 0) + freqScore +
+                        val matchScore: Long = (if (bootDtboIdx == i) 1_000_000_000L else 0L) +
+                            (if (def.strategyType.isNotEmpty()) 100_000_000L else 0L) + freqScore +
                             scoreDtbMatch(runningModel, runningCompatibles, dtsModel, dtsCompatibles) +
-                            (if (runningSocId != null && runningSocId in parseMsmSocIds(content)) 1_000_000 else 0)
+                            (if (runningSocId != null && runningSocId in parseMsmSocIds(content)) 1_000_000L else 0L)
                         Log.d(TAG, "DTB $i model='$dtsModel' freqs=${dtsFreqs.size} matchScore=$matchScore")
                         if (matchScore > bestMatchScore) {
                             bestMatchScore = matchScore

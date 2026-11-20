@@ -35,7 +35,7 @@ fun ChargingEditorScreen(
     chargingNodes: List<ChargingNode>,
     onBack: () -> Unit,
     parseCells: (String) -> List<Long>?,
-    onSave: (fragmentIndex: Int, path: List<String>, propertyName: String, cells: List<Long>) -> Unit
+    onSave: (fragmentName: String, path: List<String>, propertyName: String, cells: List<Long>) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
     var editTarget by remember { mutableStateOf<ChargingEditTarget?>(null) }
@@ -114,7 +114,7 @@ fun ChargingEditorScreen(
                     color = MaterialTheme.colorScheme.error
                 )
             }
-            items(filtered, key = { "${it.fragmentIndex}:${it.displayPath}" }) { node ->
+            items(filtered, key = { "${it.fragmentName}:${it.displayPath}" }) { node ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                     shape = RoundedCornerShape(16.dp),
@@ -207,7 +207,7 @@ fun ChargingEditorScreen(
                 TextButton(
                     enabled = countOk,
                     onClick = {
-                        onSave(target.node.fragmentIndex, target.node.path, target.prop.name, parsed!!)
+                        onSave(target.node.fragmentName, target.node.path, target.prop.name, parsed!!)
                         editTarget = null
                     }
                 ) { Text(stringResource(R.string.save)) }

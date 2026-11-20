@@ -81,18 +81,22 @@ class DtboRepository @Inject constructor(
      * original, otherwise the edit is rejected (resizing DTBO arrays can cause bootloops).
      */
     fun updateChargingProperty(
-        fragmentIndex: Int,
+        fragmentName: String,
         path: List<String>,
         propertyName: String,
         newCells: List<Long>
     ) {
         repoScope.launch {
             val root = getTreeCopy() ?: return@launch
-            val node = chargingManager.findNode(root, fragmentIndex, path) ?: return@launch
-            val prop = node.getProperty(propertyName) ?: return@launch
+            val node = chargingManager.findNode(root, fragmentName, path)
+            val prop = node?.getProperty(propertyName)
             val current = chargingManager.findChargingNodes(root)
-                .firstOrNull { it.fragmentIndex == fragmentIndex && it.path == path }
-                ?.properties?.firstOrNull { it.name == propertyName } ?: return@launch
+                .firstOrNull { it.fragmentName == fragmentName && it.path == path }
+                ?.properties?.firstOrNull { it.name == propertyName }
+            if (node == null || prop == null || current == null) {
+                userMessageManager.emitError("Edit rejected", "$fragmentName/${path.joinToString("/")}:$propertyName not found.")
+                return@launch
+            }
             if (current.cells.size != newCells.size) {
                 userMessageManager.emitError(
                     "Cell count mismatch",
@@ -102,9 +106,21 @@ class DtboRepository @Inject constructor(
             }
             if (current.cells == newCells) return@launch
             val newValue = chargingManager.formatCells(newCells, current.isHex)
+            val newLines = DtsTextPatcher.patchPropertyStrict(_dtsLines.value, node, propertyName, newValue)
+            if (newLines == null) {
+                userMessageManager.emitError(
+                    "Edit rejected",
+                    "Could not locate $propertyName unambiguously in $fragmentName. Nothing was changed."
+                )
+                return@launch
+            }
             prop.originalValue = newValue
             prop.isHexArray = current.isHex
-            patchAndCommit(node, propertyName, newValue, "Charging: $propertyName (${path.lastOrNull()})", root)
+            if (newLines != _dtsLines.value) {
+                updateContent(newLines, "Charging: $propertyName (${path.lastOrNull()}, $fragmentName)", addToHistory = true, reparseTree = false)
+                _parsedTree.value = root
+                _structuralChange.tryEmit(Unit)
+            }
         }
     }
 

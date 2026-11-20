@@ -27,22 +27,56 @@ class ChargingDomainManager @Inject constructor() {
     fun findChargingNodes(root: DtsNode): List<ChargingNode> {
         val result = ArrayList<ChargingNode>()
         val fragmentContainers = listOf(root) + root.children.filter { it.name == "/" || it.name == "root" }
+        val referenceProps = collectReferenceProps(fragmentContainers)
         for (container in fragmentContainers) {
             for (fragment in container.children) {
                 if (!DtboDomainUtils.isFragmentNode(fragment)) continue
                 val fragmentIndex = DtboDomainUtils.parseFragmentIndex(fragment.name)
                 val overlay = fragment.getChild("__overlay__") ?: continue
-                collect(overlay, fragmentIndex, emptyList(), inheritedMatch = false, out = result)
+                collect(overlay, fragmentIndex, fragment.name, emptyList(), inheritedMatch = false, referenceProps, result)
             }
         }
-        return result.distinctBy { it.fragmentIndex to it.path }
+        return result.distinctBy { it.fragmentName to it.path }
+    }
+
+    /**
+     * Properties whose cells are phandle references, keyed as "fragment@N/__overlay__/a/b:prop".
+     * They come from __fixups__ (references to the base DT, resolved by the bootloader) and
+     * __local_fixups__ (references inside the overlay, relocated by the bootloader).
+     * Editing them would break the overlay, so they are never offered for editing.
+     */
+    private fun collectReferenceProps(containers: List<DtsNode>): Set<String> {
+        val refs = HashSet<String>()
+        val quoted = Regex("\"([^\"]+)\"")
+        for (container in containers) {
+            container.getChild("__fixups__")?.properties?.forEach { prop ->
+                quoted.findAll(prop.originalValue).forEach { m ->
+                    // "/fragment@31/__overlay__/node:property:offset"
+                    val parts = m.groupValues[1].trimStart('/').split(':')
+                    if (parts.size >= 2) refs.add(parts[0] + ":" + parts[1])
+                }
+            }
+            container.getChild("__local_fixups__")?.let { walkLocalFixups(it, "", refs) }
+        }
+        return refs
+    }
+
+    private fun walkLocalFixups(node: DtsNode, path: String, out: MutableSet<String>) {
+        for (prop in node.properties) {
+            if (path.isNotEmpty()) out.add("$path:${prop.name}")
+        }
+        for (child in node.children) {
+            walkLocalFixups(child, if (path.isEmpty()) child.name else "$path/${child.name}", out)
+        }
     }
 
     private fun collect(
         node: DtsNode,
         fragmentIndex: Int,
+        fragmentName: String,
         parentPath: List<String>,
         inheritedMatch: Boolean,
+        referenceProps: Set<String>,
         out: MutableList<ChargingNode>
     ) {
         for (child in node.children) {
@@ -50,12 +84,15 @@ class ChargingDomainManager @Inject constructor() {
             val compatible = child.getProperty("compatible")?.originalValue?.replace("\"", "") ?: ""
             val matches = inheritedMatch || nodeKeyword.containsMatchIn(child.name) || nodeKeyword.containsMatchIn(compatible)
             if (matches) {
-                val props = child.properties.mapNotNull { toChargingProperty(it.name, it.originalValue) }
+                val keyPrefix = "$fragmentName/__overlay__/" + path.joinToString("/") + ":"
+                val props = child.properties
+                    .filter { (keyPrefix + it.name) !in referenceProps }
+                    .mapNotNull { toChargingProperty(it.name, it.originalValue) }
                 if (props.isNotEmpty()) {
-                    out.add(ChargingNode(fragmentIndex, path, compatible, props))
+                    out.add(ChargingNode(fragmentIndex, fragmentName, path, compatible, props))
                 }
             }
-            collect(child, fragmentIndex, path, matches, out)
+            collect(child, fragmentIndex, fragmentName, path, matches, referenceProps, out)
         }
     }
 
@@ -94,12 +131,11 @@ class ChargingDomainManager @Inject constructor() {
         }
     }
 
-    fun findNode(root: DtsNode, fragmentIndex: Int, path: List<String>): DtsNode? {
+    fun findNode(root: DtsNode, fragmentName: String, path: List<String>): DtsNode? {
         val fragmentContainers = listOf(root) + root.children.filter { it.name == "/" || it.name == "root" }
         for (container in fragmentContainers) {
             for (fragment in container.children) {
-                if (!DtboDomainUtils.isFragmentNode(fragment)) continue
-                if (DtboDomainUtils.parseFragmentIndex(fragment.name) != fragmentIndex) continue
+                if (fragment.name != fragmentName) continue
                 var cur: DtsNode? = fragment.getChild("__overlay__")
                 for (name in path) {
                     cur = cur?.getChild(name)

@@ -14,6 +14,8 @@ data class ChargingProperty(
 @Immutable
 data class ChargingNode(
     val fragmentIndex: Int,
+    /** Exact fragment node name as it appears in the DTS (e.g. "fragment@31"). */
+    val fragmentName: String,
     /** Node names from `__overlay__` (exclusive) down to this node (inclusive). */
     val path: List<String>,
     val compatible: String,
